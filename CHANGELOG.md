@@ -1,6 +1,7 @@
-# Example
+# Assistant
 
-## 0.1.0
+## 1.0.0
 
-First version of the template: a notice board with one table, an API, a
-club-app screen, a setting and tests.
+First version: drafts of posts, invitations, reminders and minutes summaries
+with Claude, in the club's language, form of address and tone; the club's own
+Anthropic API key and an explicit consent switch; the last drafts per person.
