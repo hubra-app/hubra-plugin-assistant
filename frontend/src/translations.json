@@ -1,28 +1,134 @@
 {
   "en-GB": {
-    "shell": { "nav": { "example": "Notice board" } },
-    "example": {
-      "title": "Notice board",
-      "desc": "Short notes for the whole club",
-      "placeholder": "Write a note…",
-      "add": "Post note",
-      "saved": "Note posted",
-      "delete": "Delete note",
-      "loading": "Loading…",
-      "empty": "No notes yet."
+    "shell": {
+      "nav": {
+        "assistant": "Assistant"
+      }
+    },
+    "roles": {
+      "perms": {
+        "assistant_drafts_update": "Write drafts with the AI assistant"
+      }
+    },
+    "assistant": {
+      "title": "Assistant",
+      "desc": "Notes in, a draft out: posts, invitations, reminders and summaries of minutes in the club's tone.",
+      "setupTitle": "Not set up yet",
+      "setupBody": "The assistant uses Claude by Anthropic. Before it writes anything, the club has to do two things in the module's settings:",
+      "setupConsent": "Agree that what board members type here is sent to Anthropic",
+      "setupKey": "Enter the club's own Anthropic API key (the club pays for its use)",
+      "privacy": "Only what you type, and the title, date and place of an event you pick, are sent. Never member lists, addresses or other data from Hubra.",
+      "toSettings": "Open the settings",
+      "what": "What do you need?",
+      "kind": {
+        "post": "Post",
+        "invitation": "Invitation",
+        "reminder": "Reminder",
+        "minutes": "Minutes summary",
+        "other": "Other"
+      },
+      "language": "Language",
+      "lang": {
+        "de": "German",
+        "fr": "French",
+        "it": "Italian",
+        "en": "English"
+      },
+      "event": "Event",
+      "noEvent": "No event",
+      "length": "Length",
+      "len": {
+        "short": "Short",
+        "medium": "Medium",
+        "long": "Long"
+      },
+      "notes": "Your notes",
+      "minutes": "Paste the minutes",
+      "hint": {
+        "post": "What happened or what's new, in a few words: who, what, when.",
+        "invitation": "What, when, where, the agenda, sign-up until …",
+        "reminder": "What's due, by when, how to do it.",
+        "minutes": "The full minutes. The assistant picks out decisions and next steps.",
+        "other": "Describe the text you need."
+      },
+      "sentNote": "What you type is sent to Anthropic to write the draft.",
+      "write": "Write a draft",
+      "empty": "Your draft appears here. You can change it before you copy it.",
+      "draft": "Draft",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyFailed": "Couldn't copy; select the text and copy it yourself",
+      "titleLabel": "Title",
+      "bodyLabel": "Text",
+      "checkIt": "Read it before you use it: the assistant can get things wrong. Placeholders like [Datum] mean something was missing from your notes.",
+      "recent": "Your last drafts",
+      "delete": "Delete"
     }
   },
   "de-CH": {
-    "shell": { "nav": { "example": "Pinnwand" } },
-    "example": {
-      "title": "Pinnwand",
-      "desc": "Kurze Notizen für den ganzen Verein",
-      "placeholder": "Notiz schreiben …",
-      "add": "Notiz posten",
-      "saved": "Notiz gepostet",
-      "delete": "Notiz löschen",
-      "loading": "Wird geladen …",
-      "empty": "Noch keine Notizen."
+    "shell": {
+      "nav": {
+        "assistant": "Assistent"
+      }
+    },
+    "roles": {
+      "perms": {
+        "assistant_drafts_update": "Entwürfe mit dem KI-Assistenten schreiben"
+      }
+    },
+    "assistant": {
+      "title": "Assistent",
+      "desc": "Notizen rein, Entwurf raus: Beiträge, Einladungen, Erinnerungen und Zusammenfassungen von Protokollen im Ton des Vereins.",
+      "setupTitle": "Noch nicht eingerichtet",
+      "setupBody": "Der Assistent nutzt Claude von Anthropic. Bevor er etwas schreibt, muss der Verein in den Einstellungen des Moduls zwei Dinge tun:",
+      "setupConsent": "Zustimmen, dass das, was Vorstandsmitglieder hier eintippen, an Anthropic geht",
+      "setupKey": "Den eigenen Anthropic-API-Schlüssel des Vereins eintragen (der Verein bezahlt die Nutzung)",
+      "privacy": "Gesendet wird nur, was du eintippst, und Titel, Datum und Ort eines gewählten Anlasses. Nie Mitgliederlisten, Adressen oder andere Daten aus Hubra.",
+      "toSettings": "Einstellungen öffnen",
+      "what": "Was brauchst du?",
+      "kind": {
+        "post": "Beitrag",
+        "invitation": "Einladung",
+        "reminder": "Erinnerung",
+        "minutes": "Protokoll-Zusammenfassung",
+        "other": "Anderes"
+      },
+      "language": "Sprache",
+      "lang": {
+        "de": "Deutsch",
+        "fr": "Französisch",
+        "it": "Italienisch",
+        "en": "Englisch"
+      },
+      "event": "Anlass",
+      "noEvent": "Kein Anlass",
+      "length": "Länge",
+      "len": {
+        "short": "Kurz",
+        "medium": "Mittel",
+        "long": "Lang"
+      },
+      "notes": "Deine Notizen",
+      "minutes": "Protokoll einfügen",
+      "hint": {
+        "post": "Was passiert oder neu ist, in Stichworten: wer, was, wann.",
+        "invitation": "Was, wann, wo, Traktanden, Anmeldung bis …",
+        "reminder": "Was fällig ist, bis wann, wie es geht.",
+        "minutes": "Das ganze Protokoll. Der Assistent holt Beschlüsse und nächste Schritte heraus.",
+        "other": "Beschreib den Text, den du brauchst."
+      },
+      "sentNote": "Was du eintippst, geht an Anthropic, um den Entwurf zu schreiben.",
+      "write": "Entwurf schreiben",
+      "empty": "Hier erscheint dein Entwurf. Du kannst ihn ändern, bevor du ihn kopierst.",
+      "draft": "Entwurf",
+      "copy": "Kopieren",
+      "copied": "Kopiert",
+      "copyFailed": "Kopieren ging nicht; markiere den Text und kopiere ihn selbst",
+      "titleLabel": "Titel",
+      "bodyLabel": "Text",
+      "checkIt": "Lies ihn, bevor du ihn brauchst: der Assistent kann sich irren. Platzhalter wie [Datum] heissen, dass etwas in deinen Notizen fehlte.",
+      "recent": "Deine letzten Entwürfe",
+      "delete": "Löschen"
     }
   }
 }
