@@ -59,7 +59,7 @@ function NotReady({ options }: { options: Options }) {
       <Text size="xs" c="dimmed" mb="md">
         {t('assistant.privacy')}
       </Text>
-      <Button leftSection={<IconSettings size={16} />} onClick={() => navigate('/app/settings/modules')}>
+      <Button leftSection={<IconSettings size={16} />} onClick={() => navigate('/app/settings/modules?module=assistant')}>
         {t('assistant.toSettings')}
       </Button>
     </Paper>
