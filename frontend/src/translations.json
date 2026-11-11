@@ -17,7 +17,7 @@
       "setupBody": "The assistant uses Claude by Anthropic. Before it writes anything, the club has to do two things in the module's settings:",
       "setupConsent": "Agree that what board members type here is sent to Anthropic",
       "setupKey": "Enter the club's own Anthropic API key (the club pays for its use)",
-      "privacy": "Only what you type, and the title, date and place of an event you pick, are sent. Never member lists, addresses or other data from Hubra.",
+      "privacy": "Only what you type, and the title, date and place of an event you pick, are sent. Never member lists, addresses or other data from Hubra. Members' names, mail addresses, phone numbers and IBANs are replaced with placeholders like [Person 1] before sending and put back into the draft afterwards.",
       "toSettings": "Open the settings",
       "what": "What do you need?",
       "kind": {
@@ -51,7 +51,7 @@
         "minutes": "The full minutes. The assistant picks out decisions and next steps.",
         "other": "Describe the text you need."
       },
-      "sentNote": "What you type is sent to Anthropic to write the draft.",
+      "sentNote": "What you type is sent to Anthropic to write the draft, without members' names, mail addresses, phone numbers and IBANs. Drafts are deleted after the time set in the module's settings.",
       "write": "Write a draft",
       "empty": "Your draft appears here. You can change it before you copy it.",
       "draft": "Draft",
@@ -83,7 +83,7 @@
       "setupBody": "Der Assistent nutzt Claude von Anthropic. Bevor er etwas schreibt, muss der Verein in den Einstellungen des Moduls zwei Dinge tun:",
       "setupConsent": "Zustimmen, dass das, was Vorstandsmitglieder hier eintippen, an Anthropic geht",
       "setupKey": "Den eigenen Anthropic-API-Schlüssel des Vereins eintragen (der Verein bezahlt die Nutzung)",
-      "privacy": "Gesendet wird nur, was du eintippst, und Titel, Datum und Ort eines gewählten Anlasses. Nie Mitgliederlisten, Adressen oder andere Daten aus Hubra.",
+      "privacy": "Gesendet wird nur, was du eintippst, und Titel, Datum und Ort eines gewählten Anlasses. Nie Mitgliederlisten, Adressen oder andere Daten aus Hubra. Namen von Mitgliedern, Mailadressen, Telefonnummern und IBANs werden vor dem Senden durch Platzhalter wie [Person 1] ersetzt und im Entwurf wieder eingesetzt.",
       "toSettings": "Einstellungen öffnen",
       "what": "Was brauchst du?",
       "kind": {
@@ -117,7 +117,7 @@
         "minutes": "Das ganze Protokoll. Der Assistent holt Beschlüsse und nächste Schritte heraus.",
         "other": "Beschreib den Text, den du brauchst."
       },
-      "sentNote": "Was du eintippst, geht an Anthropic, um den Entwurf zu schreiben.",
+      "sentNote": "Was du eintippst, geht an Anthropic, um den Entwurf zu schreiben, ohne Namen von Mitgliedern, Mailadressen, Telefonnummern und IBANs. Entwürfe werden nach der in den Einstellungen des Moduls festgelegten Zeit gelöscht.",
       "write": "Entwurf schreiben",
       "empty": "Hier erscheint dein Entwurf. Du kannst ihn ändern, bevor du ihn kopierst.",
       "draft": "Entwurf",

@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from flask import Blueprint, jsonify
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from hubra.core.auth.helpers import get_current_member
 from hubra.core.errors import api_error
@@ -19,8 +19,8 @@ from hubra.core.extensions import db
 from hubra.core.permissions import permission_required
 from hubra.core.utils import log_audit
 
-from . import claude, services
-from .body import Invalid, _body, _int, _iso, _text
+from . import claude, privacy, services
+from .body import Invalid, _body, _can, _int, _iso, _text
 from .models import AssistantDraft
 
 assistant_bp = Blueprint("assistant_bp", __name__)
@@ -48,6 +48,13 @@ def _draft(d: AssistantDraft) -> dict:
     }
 
 
+def _choice(data: dict, key: str, default: str, allowed) -> str:
+    value = data.get(key) or default
+    if not isinstance(value, str) or value not in allowed:
+        raise Invalid(f"{key} must be one of " + ", ".join(allowed))
+    return value
+
+
 @assistant_bp.get("/options")
 @permission_required("drafts", "update", LABEL)
 def options():
@@ -55,12 +62,19 @@ def options():
 
     cfg = services.config()
     today = date.today()
-    events = db.session.scalars(
-        select(ClubEvent)
-        .where(ClubEvent.date >= today)
-        .where(ClubEvent.date <= today + timedelta(days=180))
-        .order_by(ClubEvent.date)
-        .limit(60)
+    # Events only for those who may see them anyway: the assistant right
+    # alone doesn't open the club's calendar.
+    events = (
+        db.session.scalars(
+            select(ClubEvent)
+            .where(ClubEvent.date >= today)
+            .where(ClubEvent.date <= today + timedelta(days=180))
+            .where(ClubEvent.cancelled_at.is_(None))
+            .order_by(ClubEvent.date)
+            .limit(60)
+        )
+        if _can(get_current_member(), services.EVENTS_READ)
+        else []
     )
     return jsonify(
         {
@@ -98,20 +112,18 @@ def create_draft():
 
     member = get_current_member()
     data = _body()
-    kind = data.get("kind") or "post"
-    if kind not in services.KINDS:
-        raise Invalid("kind must be one of " + ", ".join(services.KINDS))
-    language = data.get("language") or "de"
-    if language not in services.LANGUAGES:
-        raise Invalid("language must be one of " + ", ".join(services.LANGUAGES))
-    length = data.get("length") or "medium"
-    if length not in services.LENGTHS:
-        raise Invalid("length must be short, medium or long")
+    kind = _choice(data, "kind", "post", services.KINDS)
+    language = _choice(data, "language", "de", services.LANGUAGES)
+    length = _choice(data, "length", "medium", services.LENGTHS)
     limit = services.MINUTES_LIMIT if kind == "minutes" else services.NOTES_LIMIT
     notes = _text(data, "notes", limit, required=True)
     event = None
     event_id = _int(data, "eventId", 1, 2**31 - 1)
     if event_id:
+        if not _can(member, services.EVENTS_READ):
+            return api_error(
+                "FORBIDDEN", "Picking an event needs the right to view events.", 403
+            )
         event = db.session.get(ClubEvent, event_id)
         if event is None:
             raise Invalid("eventId must be an event")
@@ -123,27 +135,33 @@ def create_draft():
             "The club hasn't agreed to send notes to Anthropic or entered its API key yet.",
             409,
         )
-    recent = db.session.scalar(
-        select(func.count(AssistantDraft.id))
-        .where(AssistantDraft.created_by == member.id)
-        .where(AssistantDraft.created_at >= services.now() - timedelta(hours=1))
-    )
-    if (recent or 0) >= services.PER_HOUR:
+    # Counted from the audit log, so deleting drafts doesn't free up more.
+    if services.made_since(timedelta(hours=1), member.id) >= services.PER_HOUR:
         return api_error(
             "TOO_MANY_DRAFTS",
             "That's enough drafts for this hour; try again later.",
             429,
         )
+    cap = services.club_per_day(cfg)
+    if cap and services.made_since(timedelta(days=1)) >= cap:
+        return api_error(
+            "CLUB_LIMIT_REACHED",
+            "The club has reached its number of drafts for today; try again tomorrow.",
+            429,
+        )
 
+    masker = privacy.Masker()
     try:
         got = claude.draft(
             str(cfg["api_key"]).strip(),
             str(cfg.get("model") or claude.MODELS[0]),
             services.system_prompt(cfg, language, length),
-            services.user_prompt(kind, notes, event),
+            services.user_prompt(kind, notes, event, masker.mask),
         )
     except claude.ClaudeError as exc:
         return api_error("ASSISTANT_FAILED", str(exc), 502)
+    got.title = masker.unmask(got.title)
+    got.body = masker.unmask(got.body)
 
     row = AssistantDraft(
         kind=kind,
@@ -172,6 +190,7 @@ def delete_draft(draft_id: int):
     row = db.session.get(AssistantDraft, draft_id)
     if row is None or row.created_by != member.id:
         return api_error("NOT_FOUND", "not found", 404)
+    log_audit(member.id, "assistant.draft_delete", "AssistantDraft", row.id, row.kind)
     db.session.delete(row)
     db.session.commit()
     return "", 204

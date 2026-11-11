@@ -48,14 +48,25 @@ class Draft:
     output_tokens: int
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """urllib would follow a redirect with the x-api-key header still on it;
+    the Messages API never redirects, so a redirect is an error here."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
 def _request(body: dict, headers: dict) -> dict:
     """One call; tests replace this."""
     req = urllib.request.Request(
         URL, data=json.dumps(body).encode(), method="POST", headers=headers
     )
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            return json.loads(resp.read() or b"{}")
+        with _opener.open(req, timeout=TIMEOUT) as resp:
+            got = json.loads(resp.read() or b"{}")
     except urllib.error.HTTPError as exc:
         code = int(exc.code)
         try:
@@ -80,6 +91,9 @@ def _request(body: dict, headers: dict) -> dict:
         raise ClaudeError("Anthropic can't be reached") from None
     except ValueError:
         raise ClaudeError("Anthropic sent an answer Hubra can't read") from None
+    if not isinstance(got, dict):
+        raise ClaudeError("Anthropic sent an answer Hubra can't read")
+    return got
 
 
 def draft(api_key: str, model: str, system: str, prompt: str) -> Draft:
@@ -108,18 +122,31 @@ def draft(api_key: str, model: str, system: str, prompt: str) -> Draft:
         raise ClaudeError("Claude declined to write this; rephrase the notes")
     if stop == "max_tokens":
         raise ClaudeError("The draft got too long; ask for a shorter text")
+    content = got.get("content")
     text = "".join(
-        b.get("text", "") for b in got.get("content") or [] if b.get("type") == "text"
+        str(b.get("text") or "")
+        for b in (content if isinstance(content, list) else [])
+        if isinstance(b, dict) and b.get("type") == "text"
     )
     try:
         data = json.loads(text)
     except ValueError:
-        raise ClaudeError("Claude's answer wasn't a draft; try again") from None
-    usage = got.get("usage") or {}
+        data = None
+    if not isinstance(data, dict):
+        raise ClaudeError("Claude's answer wasn't a draft; try again")
+    usage = got.get("usage")
+    usage = usage if isinstance(usage, dict) else {}
     return Draft(
         title=str(data.get("title") or "").strip(),
         body=str(data.get("body") or "").strip(),
         model=str(got.get("model") or model),
-        input_tokens=int(usage.get("input_tokens") or 0),
-        output_tokens=int(usage.get("output_tokens") or 0),
+        input_tokens=_tokens(usage.get("input_tokens")),
+        output_tokens=_tokens(usage.get("output_tokens")),
     )
+
+
+def _tokens(value) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
