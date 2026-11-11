@@ -19,6 +19,8 @@ LENGTHS = {
 NOTES_LIMIT = 4000
 MINUTES_LIMIT = 60000
 PER_HOUR = 30
+KEEP_DAYS = 90
+CLUB_PER_DAY = 100
 # Picking an event (and seeing the upcoming ones) needs the events right too.
 EVENTS_READ = "events.read"
 
@@ -52,6 +54,72 @@ def config() -> dict:
     return get_config("assistant")
 
 
+def _setting(cfg: dict, key: str, default: int, low: int, high: int) -> int:
+    try:
+        value = int(cfg.get(key) if cfg.get(key) is not None else default)
+    except (TypeError, ValueError):
+        value = default
+    return min(max(value, low), high)
+
+
+def keep_days(cfg: dict) -> int:
+    return _setting(cfg, "keep_days", KEEP_DAYS, 1, 3650)
+
+
+def club_per_day(cfg: dict) -> int:
+    """0: no cap."""
+    return _setting(cfg, "club_per_day", CLUB_PER_DAY, 0, 100000)
+
+
+def made_since(span, member_id: int | None = None) -> int:
+    """Drafts written in the last *span* (by one member, or the whole club),
+    from the audit log: a deleted draft still counts."""
+    from sqlalchemy import func, select
+
+    from hubra.core.extensions import db
+    from hubra.core.models.audit import AuditEntry
+
+    query = (
+        select(func.count(AuditEntry.id))
+        .where(AuditEntry.action == "assistant.draft")
+        .where(AuditEntry.time >= now() - span)
+    )
+    if member_id is not None:
+        query = query.where(AuditEntry.actor_id == member_id)
+    return int(db.session.scalar(query) or 0)
+
+
+def purge(cfg: dict) -> int:
+    """Delete drafts older than keep_days and those whose author is gone.
+
+    Club schemas carry no foreign keys (they're cloned with LIKE … INCLUDING
+    ALL), so ON DELETE SET NULL never runs: a deleted member's id stays in
+    created_by. Both cases are removed here.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import delete, exists, or_, select
+
+    from hubra.core.extensions import db
+    from hubra.core.models.member import Member
+
+    from .models import AssistantDraft
+
+    gone = ~exists(select(Member.id).where(Member.id == AssistantDraft.created_by))
+    result = db.session.execute(
+        delete(AssistantDraft)
+        .where(
+            or_(
+                AssistantDraft.created_at < now() - timedelta(days=keep_days(cfg)),
+                AssistantDraft.created_by.is_(None),
+                gone,
+            )
+        )
+        .execution_options(synchronize_session=False)
+    )
+    return int(result.rowcount or 0)
+
+
 def ready(cfg: dict) -> bool:
     return bool(cfg.get("consent")) and bool(str(cfg.get("api_key") or "").strip())
 
@@ -83,13 +151,20 @@ def system_prompt(cfg: dict, language: str, length: str) -> str:
         "unless the club's tone asks for them. Separate paragraphs with an empty line.",
         "Sign off as the board (Vorstand) unless the notes name someone.",
         "Return the title or subject line in «title» and the text in «body».",
+        (
+            "Placeholders like [Person 1], [E-Mail 1], [Telefon 1] or [IBAN 1] stand "
+            "for personal data that Hubra fills in afterwards: keep each exactly as "
+            "written, never translate, inflect or change it, and don't guess what is "
+            "behind it."
+        ),
     ]
     if tone:
         lines.append(f"The club's tone, in its own words: {tone}")
     return "\n".join(lines)
 
 
-def user_prompt(kind: str, notes: str, event=None) -> str:
+def user_prompt(kind: str, notes: str, event=None, mask=None) -> str:
+    mask = mask or (lambda text: text)
     parts = [TASKS.get(kind, TASKS["other"])]
     if event is not None:
         when = f"{event.date:%d.%m.%Y}"
@@ -97,10 +172,10 @@ def user_prompt(kind: str, notes: str, event=None) -> str:
             when += f" – {event.end_date:%d.%m.%Y}"
         if event.time and not event.all_day:
             when += f", {event.time}"
-        details = [f"Title: {event.title}", f"Date: {when}"]
+        details = [f"Title: {mask(event.title)}", f"Date: {when}"]
         if event.location:
-            details.append(f"Place: {event.location}")
+            details.append(f"Place: {mask(event.location)}")
         parts.append("<event>\n" + "\n".join(details) + "\n</event>")
     tag = "minutes" if kind == "minutes" else "notes"
-    parts.append(f"<{tag}>\n{notes}\n</{tag}>")
+    parts.append(f"<{tag}>\n{mask(notes)}\n</{tag}>")
     return "\n\n".join(parts)

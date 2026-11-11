@@ -1,8 +1,21 @@
 # Assistant
 
-## 1.0.2
+## 1.1.0
 
-Security fixes from the plugin audit:
+Needs Hubra 0.2.3 or newer (for the daily job).
+
+Privacy and security from the plugin audit:
+
+- Members' names, mail addresses, phone numbers and IBANs are replaced with
+  placeholders like [Person 1] before anything goes to Anthropic, and put
+  back into the draft.
+- Drafts are deleted after 90 days (new setting **Keep drafts for (days)**)
+  by a daily job, and when their author is no longer a member (club schemas
+  have no foreign keys, so the old ON DELETE SET NULL never ran).
+- New setting **Drafts per day for the whole club** (100; 0 = no cap). The
+  hourly and daily limits count from the audit log, so deleting drafts
+  doesn't free up more.
+- Deleting a draft is recorded in the audit log.
 
 - The upcoming events (and picking one for a draft) need the right to view
   events too; the assistant right alone no longer lists the club's calendar.

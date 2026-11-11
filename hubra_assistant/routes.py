@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from flask import Blueprint, jsonify
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from hubra.core.auth.helpers import get_current_member
 from hubra.core.errors import api_error
@@ -19,7 +19,7 @@ from hubra.core.extensions import db
 from hubra.core.permissions import permission_required
 from hubra.core.utils import log_audit
 
-from . import claude, services
+from . import claude, privacy, services
 from .body import Invalid, _body, _can, _int, _iso, _text
 from .models import AssistantDraft
 
@@ -135,27 +135,33 @@ def create_draft():
             "The club hasn't agreed to send notes to Anthropic or entered its API key yet.",
             409,
         )
-    recent = db.session.scalar(
-        select(func.count(AssistantDraft.id))
-        .where(AssistantDraft.created_by == member.id)
-        .where(AssistantDraft.created_at >= services.now() - timedelta(hours=1))
-    )
-    if (recent or 0) >= services.PER_HOUR:
+    # Counted from the audit log, so deleting drafts doesn't free up more.
+    if services.made_since(timedelta(hours=1), member.id) >= services.PER_HOUR:
         return api_error(
             "TOO_MANY_DRAFTS",
             "That's enough drafts for this hour; try again later.",
             429,
         )
+    cap = services.club_per_day(cfg)
+    if cap and services.made_since(timedelta(days=1)) >= cap:
+        return api_error(
+            "CLUB_LIMIT_REACHED",
+            "The club has reached its number of drafts for today; try again tomorrow.",
+            429,
+        )
 
+    masker = privacy.Masker()
     try:
         got = claude.draft(
             str(cfg["api_key"]).strip(),
             str(cfg.get("model") or claude.MODELS[0]),
             services.system_prompt(cfg, language, length),
-            services.user_prompt(kind, notes, event),
+            services.user_prompt(kind, notes, event, masker.mask),
         )
     except claude.ClaudeError as exc:
         return api_error("ASSISTANT_FAILED", str(exc), 502)
+    got.title = masker.unmask(got.title)
+    got.body = masker.unmask(got.body)
 
     row = AssistantDraft(
         kind=kind,
@@ -184,6 +190,7 @@ def delete_draft(draft_id: int):
     row = db.session.get(AssistantDraft, draft_id)
     if row is None or row.created_by != member.id:
         return api_error("NOT_FOUND", "not found", 404)
+    log_audit(member.id, "assistant.draft_delete", "AssistantDraft", row.id, row.kind)
     db.session.delete(row)
     db.session.commit()
     return "", 204

@@ -4,7 +4,7 @@
 
 A plugin for [Hubra](https://hubra.club). Writing help for the board: a few notes in, a draft out (a post, an invitation, a reminder, a summary of minutes, or anything else), in the club's tone and language. Written by Claude (Anthropic) with the club's own API key, and only after the club agrees.
 
-**Version** 1.0.2 · **Works with** Hubra >=0.2,<1 · **Plugin id** `assistant` · **Needs** the members module
+**Version** 1.1.0 · **Works with** Hubra >=0.2.3,<1 · **Plugin id** `assistant` · **Needs** the members module
 
 ![Writing a draft](docs/screenshots/assistant.png)
 
@@ -18,12 +18,15 @@ A plugin for [Hubra](https://hubra.club). Writing help for the board: a few note
 
 Nothing is sent anywhere until the club, in the module's settings, switches on **Send our notes to Anthropic** and enters its **own Anthropic API key** (from console.anthropic.com; the club pays Anthropic for its use). Then only what the board member types, and the title, date and place of an event they pick, goes to Anthropic's API. Never member lists, addresses or other data from Hubra. The page says so next to the button.
 
+Before sending, members' names (as spelled in Hubra: the full name, and a first or last name only one member has), mail addresses, phone numbers and IBANs are replaced with placeholders like `[Person 1]` or `[E-Mail 1]`; Hubra puts them back into the draft that comes back. A name spelled differently, or someone who isn't a member, goes as typed.
+
 - Model: Claude Opus 5.5 by default; Sonnet 5.5 or Haiku 5.5 cost less.
-- Each person may write 30 drafts an hour.
+- Each person may write 30 drafts an hour, and the whole club 100 a day (setting **Drafts per day for the whole club**, 0 for no cap). Deleting drafts doesn't free up more.
+- Drafts, with the notes and minutes they came from, are deleted after 90 days (setting **Keep drafts for (days)**) by a daily job, and once their author is no longer a member. Deleting a draft is recorded in the audit log.
 - The key is stored encrypted and never shown in errors.
 - The plugin calls `https://api.anthropic.com/v1/messages` over plain HTTPS (plugins can't bring Python packages), with structured output (title and text) and, on Opus and Sonnet, Anthropic's server-side fallback when a request is declined.
 
-The page needs the permission `assistant.drafts.update`.
+The page needs the permission `assistant.drafts.update`; picking an event also needs `events.read`.
 
 | Not set up yet | Phone |
 | --- | --- |

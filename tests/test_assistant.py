@@ -143,6 +143,7 @@ def test_draft_request_and_history(client, club):
         "«ss»" in body["system"]
         and "«du»" in body["system"]
         and "Herzlich, kurze Sätze" in body["system"]
+        and "[Person 1]" in body["system"]
     )
     prompt = body["messages"][0]["content"]
     assert "Generalversammlung" in prompt and "19:30" in prompt and "Clubhaus" in prompt
@@ -268,3 +269,129 @@ def test_a_redirect_is_not_followed_with_the_key():
         handler.redirect_request(req, None, 302, "Found", {}, "https://evil.example/")
         is None
     )
+
+
+def test_personal_data_stays_in_hubra(client, club, monkeypatch):
+    """Names, mail, phone and IBAN go out as placeholders and come back."""
+    from hubra_assistant import claude
+
+    club["cfg"]["consent"] = True
+    sent = []
+
+    def echo(body, headers):
+        prompt = body["messages"][0]["content"]
+        sent.append(prompt)
+        notes = prompt.split("<notes>\n", 1)[1].split("\n</notes>", 1)[0]
+        return {
+            "stop_reason": "end_turn",
+            "model": "claude-opus-5-5",
+            "content": [
+                {"type": "text", "text": json.dumps({"title": "Hallo", "body": notes})}
+            ],
+            "usage": {},
+        }
+
+    monkeypatch.setattr(claude, "_request", echo)
+    _login(client, "vera@test.ch")
+    notes = (
+        "Test Vera übernimmt die Kasse, Max hilft. Fragen an kasse@verein.ch "
+        "oder 079 123 45 67, Zahlung auf CH93 0076 2011 6238 5295 7. Test bleibt."
+    )
+    got = client.post(f"{BASE}/drafts", json={"kind": "post", "notes": notes})
+    assert got.status_code == 201
+    out = sent[0]
+    for secret in ("Vera", "Max", "kasse@verein.ch", "079 123 45 67", "CH93"):
+        assert secret not in out, secret
+    assert "[Person 1]" in out and "[E-Mail 1]" in out and "[IBAN 1]" in out
+    assert "[Telefon 1]" in out
+    # "Test" is the first name of every member here: not a name on its own.
+    assert "Test bleibt" in out
+    assert got.get_json()["body"] == notes
+
+
+def test_masker_keeps_tokens_apart():
+    from hubra_assistant.privacy import Masker
+
+    people = [(f"Anna{i:02d}", f"Muster{i:02d}") for i in range(12)]
+    m = Masker(people)
+    text = " ".join(f"Anna{i:02d} Muster{i:02d}" for i in range(12))
+    masked = m.mask(text)
+    assert "Anna" not in masked and "[Person 10]" in masked
+    assert m.unmask(masked) == text
+    # Same first name twice: not replaced alone, only as a full name.
+    m = Masker([("Lea", "Frei"), ("Lea", "Hug")])
+    assert m.mask("Lea und Lea Hug") == "Lea und [Person 1]"
+
+
+def test_club_cap_and_deleting_doesnt_free_up(client, club, monkeypatch):
+    from hubra_assistant import services
+
+    club["cfg"]["consent"] = True
+    _login(client, "vera@test.ch")
+    monkeypatch.setattr(services, "PER_HOUR", 1)
+    made = client.post(f"{BASE}/drafts", json={"kind": "post", "notes": "x"})
+    assert made.status_code == 201
+    assert client.delete(f"{BASE}/drafts/{made.get_json()['id']}").status_code == 204
+    again = client.post(f"{BASE}/drafts", json={"kind": "post", "notes": "x"})
+    assert again.status_code == 429 and again.get_json()["error"] == "TOO_MANY_DRAFTS"
+
+    monkeypatch.setattr(services, "PER_HOUR", 100)
+    club["cfg"]["club_per_day"] = 1
+    _login(client, "ida@test.ch")
+    capped = client.post(f"{BASE}/drafts", json={"kind": "post", "notes": "x"})
+    assert capped.status_code == 429
+    assert capped.get_json()["error"] == "CLUB_LIMIT_REACHED"
+    club["cfg"]["club_per_day"] = 0
+    assert (
+        client.post(f"{BASE}/drafts", json={"kind": "post", "notes": "x"}).status_code
+        == 201
+    )
+
+
+def test_delete_is_audited(client, club, db):
+    from sqlalchemy import select
+
+    from hubra.core.models.audit import AuditEntry
+
+    club["cfg"]["consent"] = True
+    _login(client, "vera@test.ch")
+    made = client.post(f"{BASE}/drafts", json={"kind": "post", "notes": "x"})
+    draft_id = made.get_json()["id"]
+    client.delete(f"{BASE}/drafts/{draft_id}")
+    entry = db.session.scalar(
+        select(AuditEntry).where(AuditEntry.action == "assistant.draft_delete")
+    )
+    assert entry is not None and entry.target_id == draft_id
+    assert entry.actor_id == club["vera"]
+
+
+def test_purge_old_and_orphaned_drafts(club, db):
+    from datetime import UTC, datetime
+
+    from hubra_assistant import services
+    from hubra_assistant.models import AssistantDraft
+
+    def make(by, days_ago):
+        row = AssistantDraft(
+            kind="post",
+            language="de",
+            notes="x",
+            model="m",
+            created_by=by,
+            created_at=datetime.now(UTC) - timedelta(days=days_ago),
+        )
+        db.session.add(row)
+        db.session.flush()
+        return row.id
+
+    fresh = make(club["vera"], 1)
+    old = make(club["vera"], 100)
+    nobody = make(None, 1)
+    # A deleted member's id stays behind: club schemas have no foreign keys.
+    gone = make(99999, 1)
+    db.session.commit()
+    club["cfg"]["keep_days"] = 90
+    assert services.purge(club["cfg"]) == 3
+    db.session.commit()
+    left = {r.id for r in db.session.scalars(db.select(AssistantDraft))}
+    assert fresh in left and not left & {old, nobody, gone}
