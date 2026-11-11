@@ -20,7 +20,7 @@ from hubra.core.permissions import permission_required
 from hubra.core.utils import log_audit
 
 from . import claude, services
-from .body import Invalid, _body, _int, _iso, _text
+from .body import Invalid, _body, _can, _int, _iso, _text
 from .models import AssistantDraft
 
 assistant_bp = Blueprint("assistant_bp", __name__)
@@ -48,6 +48,13 @@ def _draft(d: AssistantDraft) -> dict:
     }
 
 
+def _choice(data: dict, key: str, default: str, allowed) -> str:
+    value = data.get(key) or default
+    if not isinstance(value, str) or value not in allowed:
+        raise Invalid(f"{key} must be one of " + ", ".join(allowed))
+    return value
+
+
 @assistant_bp.get("/options")
 @permission_required("drafts", "update", LABEL)
 def options():
@@ -55,12 +62,19 @@ def options():
 
     cfg = services.config()
     today = date.today()
-    events = db.session.scalars(
-        select(ClubEvent)
-        .where(ClubEvent.date >= today)
-        .where(ClubEvent.date <= today + timedelta(days=180))
-        .order_by(ClubEvent.date)
-        .limit(60)
+    # Events only for those who may see them anyway: the assistant right
+    # alone doesn't open the club's calendar.
+    events = (
+        db.session.scalars(
+            select(ClubEvent)
+            .where(ClubEvent.date >= today)
+            .where(ClubEvent.date <= today + timedelta(days=180))
+            .where(ClubEvent.cancelled_at.is_(None))
+            .order_by(ClubEvent.date)
+            .limit(60)
+        )
+        if _can(get_current_member(), services.EVENTS_READ)
+        else []
     )
     return jsonify(
         {
@@ -98,20 +112,18 @@ def create_draft():
 
     member = get_current_member()
     data = _body()
-    kind = data.get("kind") or "post"
-    if kind not in services.KINDS:
-        raise Invalid("kind must be one of " + ", ".join(services.KINDS))
-    language = data.get("language") or "de"
-    if language not in services.LANGUAGES:
-        raise Invalid("language must be one of " + ", ".join(services.LANGUAGES))
-    length = data.get("length") or "medium"
-    if length not in services.LENGTHS:
-        raise Invalid("length must be short, medium or long")
+    kind = _choice(data, "kind", "post", services.KINDS)
+    language = _choice(data, "language", "de", services.LANGUAGES)
+    length = _choice(data, "length", "medium", services.LENGTHS)
     limit = services.MINUTES_LIMIT if kind == "minutes" else services.NOTES_LIMIT
     notes = _text(data, "notes", limit, required=True)
     event = None
     event_id = _int(data, "eventId", 1, 2**31 - 1)
     if event_id:
+        if not _can(member, services.EVENTS_READ):
+            return api_error(
+                "FORBIDDEN", "Picking an event needs the right to view events.", 403
+            )
         event = db.session.get(ClubEvent, event_id)
         if event is None:
             raise Invalid("eventId must be an event")

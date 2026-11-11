@@ -10,6 +10,7 @@ import io
 import json
 import urllib.error
 from datetime import date, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,7 +22,8 @@ BASE = "/api/v1/app/assistant"
 
 @pytest.fixture
 def club(client, app, db, seeded_db, monkeypatch):
-    """Vera may use the assistant; Max may not."""
+    """Vera may use the assistant and see events; Ida only the assistant;
+    Max neither."""
     from hubra.core.models.event import ClubEvent
     from hubra_assistant import claude, services
 
@@ -29,7 +31,13 @@ def club(client, app, db, seeded_db, monkeypatch):
     app.test_cli_runner().invoke(args=["sync-permissions"])
     tier = seeded_db["tier"]
     vera = _make_role_and_member(
-        db, tier, name="Vera", permission_keys=["assistant.drafts.update"]
+        db,
+        tier,
+        name="Vera",
+        permission_keys=["assistant.drafts.update", "events.read"],
+    )
+    ida = _make_role_and_member(
+        db, tier, name="Ida", permission_keys=["assistant.drafts.update"]
     )
     max_ = _make_role_and_member(db, tier, name="Max")
     gv = ClubEvent(
@@ -73,6 +81,7 @@ def club(client, app, db, seeded_db, monkeypatch):
     return {
         "real": real,
         "vera": vera.id,
+        "ida": ida.id,
         "max": max_.id,
         "gv": gv.id,
         "cfg": cfg,
@@ -174,8 +183,88 @@ def test_errors_never_show_the_key(client, club, monkeypatch):
         )
 
     monkeypatch.setattr(claude, "_request", club["real"])
-    monkeypatch.setattr(claude.urllib.request, "urlopen", unauthorised)
+    monkeypatch.setattr(claude, "_opener", SimpleNamespace(open=unauthorised))
     got = client.post(f"{BASE}/drafts", json={"kind": "post", "notes": "x"})
     assert got.status_code == 502
     assert got.get_json()["message"] == "Anthropic didn't accept the API key"
     assert "sk-ant" not in got.get_data(as_text=True)
+
+
+def test_events_need_the_events_right(client, club):
+    """The assistant right alone doesn't open the club's calendar."""
+    club["cfg"]["consent"] = True
+    _login(client, "ida@test.ch")
+    opts = client.get(f"{BASE}/options").get_json()
+    assert opts["events"] == []
+    got = client.post(
+        f"{BASE}/drafts",
+        json={"kind": "invitation", "notes": "GV", "eventId": club["gv"]},
+    )
+    assert got.status_code == 403 and club["calls"] == []
+    assert (
+        client.post(f"{BASE}/drafts", json={"kind": "post", "notes": "x"}).status_code
+        == 201
+    )
+
+
+def test_cancelled_events_are_not_offered(client, club, db):
+    from datetime import UTC, datetime
+
+    from hubra.core.models.event import ClubEvent
+
+    db.session.get(ClubEvent, club["gv"]).cancelled_at = datetime.now(UTC)
+    db.session.commit()
+    _login(client, "vera@test.ch")
+    assert client.get(f"{BASE}/options").get_json()["events"] == []
+
+
+@pytest.mark.parametrize("key", ["kind", "language", "length"])
+def test_choices_must_be_text(client, club, key):
+    club["cfg"]["consent"] = True
+    _login(client, "vera@test.ch")
+    got = client.post(f"{BASE}/drafts", json={key: ["post"], "notes": "x"})
+    assert got.status_code == 400 and club["calls"] == []
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"stop_reason": "end_turn", "content": "nope"},
+        {"stop_reason": "end_turn", "content": [1, {"type": "text", "text": "[]"}]},
+        {"stop_reason": "end_turn", "content": [{"type": "text", "text": "42"}]},
+    ],
+)
+def test_odd_answers_are_a_502_not_a_crash(client, club, monkeypatch, answer):
+    from hubra_assistant import claude
+
+    club["cfg"]["consent"] = True
+    _login(client, "vera@test.ch")
+    monkeypatch.setattr(claude, "_request", lambda body, headers: answer)
+    got = client.post(f"{BASE}/drafts", json={"kind": "post", "notes": "x"})
+    assert got.status_code == 502 and "wasn't a draft" in got.get_json()["message"]
+
+
+def test_odd_usage_counts_as_zero(client, club):
+    club["cfg"]["consent"] = True
+    club["answer"]["usage"] = {"input_tokens": "lots", "output_tokens": None}
+    _login(client, "vera@test.ch")
+    got = client.post(f"{BASE}/drafts", json={"kind": "post", "notes": "x"})
+    assert got.status_code == 201 and got.get_json()["tokens"] == 0
+
+
+def test_a_redirect_is_not_followed_with_the_key():
+    """urllib would resend x-api-key to wherever a redirect points."""
+    import urllib.request
+
+    from hubra_assistant import claude
+
+    handler = next(
+        h
+        for h in claude._opener.handlers
+        if isinstance(h, urllib.request.HTTPRedirectHandler)
+    )
+    req = urllib.request.Request(claude.URL, headers={"x-api-key": "sk-ant-secret"})
+    assert (
+        handler.redirect_request(req, None, 302, "Found", {}, "https://evil.example/")
+        is None
+    )

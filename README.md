@@ -4,7 +4,7 @@
 
 A plugin for [Hubra](https://hubra.club). Writing help for the board: a few notes in, a draft out (a post, an invitation, a reminder, a summary of minutes, or anything else), in the club's tone and language. Written by Claude (Anthropic) with the club's own API key, and only after the club agrees.
 
-**Version** 1.0.0 · **Works with** Hubra >=0.2,<1 · **Plugin id** `assistant` · **Needs** the members module
+**Version** 1.0.2 · **Works with** Hubra >=0.2,<1 · **Plugin id** `assistant` · **Needs** the members module
 
 ![Writing a draft](docs/screenshots/assistant.png)
 

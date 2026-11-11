@@ -1,6 +1,6 @@
 id: assistant
 name: Assistant
-version: "1.0.1"
+version: "1.0.2"
 hubra: ">=0.2,<1"
 description: "Drafts for the board with Claude: posts, invitations, reminders and summaries of minutes, in the club's tone. Uses the club's own Anthropic API key, only after the club agrees."
 author: Hubra

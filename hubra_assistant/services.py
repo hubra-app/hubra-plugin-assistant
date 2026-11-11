@@ -19,6 +19,8 @@ LENGTHS = {
 NOTES_LIMIT = 4000
 MINUTES_LIMIT = 60000
 PER_HOUR = 30
+# Picking an event (and seeing the upcoming ones) needs the events right too.
+EVENTS_READ = "events.read"
 
 TASKS = {
     "post": "Write a news post for the club's members, to appear in the club app.",
